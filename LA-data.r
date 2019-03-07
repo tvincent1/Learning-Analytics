@@ -1,15 +1,35 @@
+# Learning Analytics Project - capstone for Data Science PH125x.9
+# Professional Certification
+# Tasha Vincent
+# March 2019
+
+
 # Create data frame for each session
 
 library(data.table)
 library(tidyverse)
 library(dplyr)
 
-#repeat for directories 1-6
-setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 1")
-
-s1 <- 
-  list.files() %>% 
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 1") 
+s1 <- list.files() %>% 
   map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 2") 
+s2 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 3") 
+s3 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 4") 
+s4 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 5") 
+s5 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 6") 
+s6 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+
 
 #explore dimensions of each subset
 
@@ -17,39 +37,63 @@ summary(s5)
 
 
 #merge all sessions into one data frame
-sessions <- bind_rows(list(s1, s2, s3, s4, s5, s6))
+sessions2 <- bind_rows(list(s1, s2, s3, s4, s5, s6))
 
 
 #explore session data
-summary(sessions)
+summary(sessions2)
 
 #add headers
-colnames(sessions) <- as.character(features$V2)
+colnames(sessions2) <- as.character(features$V2)
 
-head(sessions)
+head(sessions2)
 
 #convert time cols into Datetime format
-library(fasttime)
-library(lubridate)
+#library(fasttime)
+#library(lubridate)
 #first, replace nonstandard separators in date
-sessions$date <- str_replace(sessions$start_time,"\\.11\\.", "\\-11\\-")
-sessions$date1 <- str_replace(sessions$date,"\\.10\\.", "\\-10\\-")
+#sessions$date <- str_replace(sessions$start_time,"\\.11\\.", "\\-11\\-")
+#sessions$date1 <- str_replace(sessions$date,"\\.10\\.", "\\-10\\-")
 
-sessions$startdate <- strptime(sessions$date1, format ="%m-%d-%Y %H:%M:%S")
-str(sessions)
+#sessions$startdate <- strptime(sessions$date1, format ="%m-%d-%Y %H:%M:%S")
+str(sessions2)
 
-sessions[, (enddate) := as.POSIXct(sessions[[enddate]])]
-class(sessions[[enddate]])
+#sessions[, (enddate) := as.POSIXct(sessions[[enddate]])]
+#class(sessions[[enddate]])
+  
 
+#**************** examine grades per student
+  summary(intermediate_grades)
+  class(intermediate_grades)
+  colnames(intermediate_grades) <- gsub(" ","",colnames(intermediate_grades))
+  
+  quiz <- gather(intermediate_grades, Session, Score, 'Session2':'Session6', factor_key = TRUE)
+  
+  #Combine the two final exam sessions, keeping just the last score for students who retoook it
+  retake <- semi_join(final_grades2, final_grades, by= "Student ID")
+  final1 <- anti_join(final_grades, final_grades2, by= "Student ID")
+  final1a <- anti_join(final_grades2, final_grades, by= "Student ID")
+  final <- bind_rows(final1, final1a, retake)
+
+head(final)
+summary(final)
+
+items <- gather(final, Question, Score, 'ES 1.1 \r\n(2 points)':'TOTAL\r\n(100 points)', factor_key = TRUE)
+  
+overall <- items %>%
+  filter(Question =='TOTAL\r\n(100 points)') %>%
+  select(-Question)
+   
 #Explore user variations in # activities
 
 library(ggplot2)
-user_act <- sessions %>% select(student_Id, session, activity, mouse_movement, keystroke) %>%
+user_act2 <- sessions2 %>% 
+  select(student_Id, session, activity, mouse_movement, keystroke) %>%
   group_by(student_Id) %>%
   summarize(activities = n_distinct(activity), mmove = sum(mouse_movement), keys=sum(keystroke))
 
-summary(user_act)
-user_act %>% 
+summary(user_act2)
+user_act2 %>% 
   arrange(activities) %>%
   ggplot(aes(activities)) +
   geom_histogram(binwidth = 5) +
@@ -84,48 +128,55 @@ p2 <-  user_act %>%
 
 
 #Explore variability by student by session
-    user_act_ses <- sessions %>% select(student_Id, session, activity, mouse_movement, keystroke) %>%
+    user_act_ses <- sessions %>% 
+      select(student_Id, session, activity, mouse_movement, keystroke) 
+    
+    user_act_ses <- user_act_ses %>%
+      filter(activity != "Other")
+    
+    user_act_ses <- user_act_ses %>%
+      filter(activity != "Blank")%>%
       group_by(student_Id, session) %>%
       summarize(activities = n_distinct(activity), mmove = sum(mouse_movement), keys=sum(keystroke))
     
 summary(user_act_ses)
-  p4 <- user_act_ses %>% 
-      ggplot(aes(student_Id,activities, group=student_Id)) +
+ user_act_ses %>% 
+      ggplot(aes(student_Id,activities, group=session)) +
       geom_boxplot() +
       ggtitle("Activites per Student Session") 
-    ggsave("Activities_Student_Session.png", height = 5, width = 5)
+ #   ggsave("Activities_Student_Session.png", height = 5, width = 5)
 
-    user_act_ses %>% 
-      arrange(activities) %>%
-      ggplot(aes(activities)) +
+  user_act_ses %>% 
+      arrange(session) %>%
+      ggplot(aes(student_Id)) +
       geom_histogram(binwidth = 5) +
       ggtitle("Students per Session Actvity count band") +
       ylab("# Students")
-    ggsave("Students_Session_Activities.png")
+  #  ggsave("Students_Session_Activities.png")
     
-    p5 <-  user_act_ses %>% 
+  # user_act_ses %>% 
       ggplot(aes(student_Id,mmove, group=student_Id)) +
       geom_boxplot() +
       ggtitle("Mouse Moves per Student Session") 
-    ggsave("Mouse_Student_Session.png", height = 5, width = 5)
+#    ggsave("Mouse_Student_Session.png", height = 5, width = 5)
     
-    p6 <-  user_act_ses %>% 
+    #user_act_ses %>% 
       ggplot(aes(student_Id,keys, group=student_Id)) +
       geom_boxplot() +
       ggtitle("Keystrokes per Student Session") 
-    ggsave("Keys_Student_Session.png", height = 5, width = 5)
+   # ggsave("Keys_Student_Session.png", height = 5, width = 5)
     
     library(gridExtra)
     grid.arrange(p4, p5, p6, ncol=3) 
     ggsave("Student Session Metrics.png", height = 5, width = 10)
 
 
-  user_act_ses %>%
+  user_actt_ses %>%
     ggplot(aes(student_Id,n_distinct(session), fill=as.character(session), position="stack")) +
     geom_col() +
     labs(y="") +
     guides(color=guide_legend(title="Session")) +
-#    scale_fill_manual(values= c("skyblue", "royalblue", "blue", "navy")) +
+    scale_fill_manual(values= c("lightblue","skyblue", "royalblue", "blue", "navy", "black")) +
     theme(axis.text.y=element_blank(), legend.title = element_blank()) +
     ggtitle("Sessions Completed per Student")
     ggsave("Sessions per Student.png")
@@ -133,13 +184,13 @@ summary(user_act_ses)
     
 #*********
     #Explore variability by student by activity type
-    user_act_ses <- sessions %>% 
+    user_actt_ses <- user_act_ses %>% 
       select(activity, student_Id) %>%
       group_by(student_Id, activity) %>%
       summarize(act_type = n())
     
-    summary(user_act_ses)
-    user_act_ses %>% 
+    summary(user_actt_ses)
+    user_actt_ses %>% 
       ggplot(aes(student_Id,act_type, fill=activity, position="stack")) +
       geom_col() +
       labs(y="") +
@@ -152,7 +203,7 @@ summary(user_act_ses)
  #collapse types
     library(stringr)
 
-user_actt <- sessions %>%
+user_actt <- user_act_ses %>%
   select(activity, student_Id) %>%
   mutate(act_type = activity) 
   user_actt$act_type[grepl('Deeds', user_actt$act_type)] <- 'Deeds'
@@ -160,8 +211,7 @@ user_actt <- sessions %>%
   user_actt$act_type[grepl('Text', user_actt$act_type)] <- 'Text'
   user_actt$act_type[grepl('FSM', user_actt$act_type)] <- 'FSM'
   user_actt$act_type[grepl('Fsm', user_actt$act_type)] <- 'FSM'
-  user_actt$act_type[grepl('Other', user_actt$act_type)] <- 'zz Other'
-    
+
   user_actt  %>%
     group_by(student_Id, act_type) %>%
 #    summarize(n()) %>%
@@ -175,14 +225,15 @@ user_actt <- sessions %>%
 #look at activities by type per session
   user_actt_ses <- sessions %>%
     select(student_Id, activity, session ) %>%
+    filter(activity != "Other") %>%
+    filter(activity != "Blank") %>%
     mutate(act_type = activity) 
   user_actt_ses$act_type[grepl('Deeds', user_actt_ses$act_type)] <- 'Deeds'
   user_actt_ses$act_type[grepl('Study', user_actt_ses$act_type)] <- 'Study'
   user_actt_ses$act_type[grepl('Text', user_actt_ses$act_type)] <- 'Text'
   user_actt_ses$act_type[grepl('FSM', user_actt_ses$act_type)] <- 'FSM'
   user_actt_ses$act_type[grepl('Fsm', user_actt_ses$act_type)] <- 'FSM'
-  user_actt_ses$act_type[grepl('Other', user_actt_ses$act_type)] <- 'zz Other'
-  
+
   user_actt_ses  %>%
     group_by(student_Id, session, act_type) %>%
     ggplot(aes(student_Id, act_type, fill = act_type, position="stack")) +
@@ -193,52 +244,26 @@ user_actt <- sessions %>%
     ggtitle("Session Activities Completed by Type per Student")
   ggsave("Session ActivitiesPerTypeByStudent.png")  
   
-  # examine grades per student
-  summary(intermediate_grades)
-  class(intermediate_grades)
-  colnames(intermediate_grades) <- gsub(" ","",colnames(intermediate_grades))
-  
-  quiz <- gather(intermediate_grades, Session, Score, 'Session2':'Session6', factor_key = TRUE)
-
-  quiz %>%
-    group_by(StudentId, Session) %>%
-    ggplot(aes(StudentId, Score, fill = Score, position_stack())) +
-    geom_col() +
-    facet_grid(Session~.) +
-    ggtitle("Session Assessment Scores by Student")
-  ggsave("Quiz Scores By Student.png")  
-
-  #Combine the two final exam sessions, keeping just the last score for students who retoook it
-  retake <- semi_join(final_grades2, final_grades, by= "Student ID")
-  final1 <- anti_join(final_grades, final_grades2, by= "Student ID")
-  final1a <- anti_join(final_grades2, final_grades, by= "Student ID")
-  final <- bind_rows(final1, final1a, retake)
-
-head(final)
-summary(final)
-items <- gather(final, Question, Score, 'ES 1.1 \r\n(2 points)':'TOTAL\r\n(100 points)', factor_key = TRUE)
-    
+ 
 library(stringr)
 #rename(items$`Student ID`, items$`Student_ID`)
 
 #    filter(Question == 'TOTAL\r\n(100 points)') %>%
-overall <- overall %>%
-  mutate(StudentID = as.numeric(overall$'Student ID')) 
+#overall <- overall %>%
+ # mutate(StudentID = as.numeric(overall$'Student ID')) 
 
 library(RColorBrewer)
 
 overall %>%
-  ggplot( aes(Score)) +
-  geom_histogram(binwidth = 5)   
-    
+  ggplot(aes(Score)) +
+  geom_histogram(binwidth = 5)  +  
+  ggtitle("Final Exam Score Distribution")
+  
 overall %>%
-  group_by(StudentID) %>%
-  ggplot(aes(StudentID, Score), color = "blue") + 
+    ggplot(aes(StudentID, Score, fill=Score)) + 
     geom_col() +
-    ggtitle("Final Exam Scores by Student") +
-  scale_fill_manual(values = "royalblue")
-#   +
-#  scale_fill_brewer(palette=) 
+    ggtitle("Final Exam Scores by Student") 
+#  scale_fill_brewer(palette="blues") 
 
 ggsave("FinalByStudent.png")  
  
@@ -247,48 +272,39 @@ head(items)
 summary(items)
 class(items)
 
-#* Predict how students will score on Final based on prior activities
+quiz %>%
+    group_by(StudentID, Session) %>%
+    ggplot(aes(StudentID, Score, fill = Score, position_stack())) +
+    geom_col() +
+    facet_grid(Session~.) +
+    ggtitle("Session Assessment Scores by Student")
+  ggsave("Quiz Scores By Student.png")  
 
-# createtest and training subsets
+  
+#***************** Predict how students will score on Final based on prior activities
+
+# create test and training subsets
 # Validation (or test_set) set will be 30% of final exam data (overall) data
 
 library(caret)
 set.seed(1)
 test_index <- createDataPartition(y = overall$StudentID, times = 1, p = 0.3, list = FALSE)
 
-quiz <- quiz %>% 
- select(-StudentId)
-
-overall <- overall %>% 
+users <- overall %>% 
   select(- Question, -"Student ID")
 
-Scores_df <- union(quiz, overall)
-
-user_act <- user_act %>% 
+user_act2 <- user_act2 %>% 
   mutate(StudentID = student_Id) %>%
-  select(-student_Id)
+  select(StudentID, activities, mmove, keys)
 
-class(test_index)
+metrics <- left_join(users, user_act2, by = "StudentID")
 
+test <- filter(metrics, StudentID %in% c(test_index))
 
-test <- filter(user_act, StudentID %in% c(test_index))
-test <- left_join(test, exam_test, by = "StudentID")
-
-train <- filter(user_act, StudentID %in% c(exam_train$StudentID)) 
-train <- left_join(train, exam_train, by = "StudentID")
-
-testscore <- filter(Scores_df, StudentID %in% c(test_index))
-trainscore <- anti_join(Scores_df, testscore, by = "StudentID")
-
-exam_train <- trainscore %>%
-  filter(Session =="TOTAL\r\n(100 points)") %>%
-  select(-Session)
-exam_test <- testscore %>%
-  filter(Session =="TOTAL\r\n(100 points)")  %>%
-  select(-Session)
+train <- anti_join(metrics, test, by = "StudentID")
 
 summary(train)
-summary(exam_train)
+summary(test)
 
 # *********** Evaluating Results ************
 #create a function to evaluate whether the predicted scores are close to the actual scores for a given student.
@@ -301,12 +317,12 @@ RMSE <- function(true_scores, predicted_scores){
 
 # Basic model predicts that any student will get the average score
 
-mu <- mean(exam_train$Score)
+mu <- mean(train$Score)
 mu
 
 # check results using RMSE function
 
-avg_only <- RMSE(exam_test$Score, mu)
+avg_only <- RMSE(test$Score, mu)
 avg_only
 
 
@@ -317,66 +333,85 @@ rmse_results <- data_frame(Model = "Simple average", RMSE = avg_only)
 
 # ****** # Activities effect on predicted rating ******************
 
-# see whether the number of activities completed, mouse movementsor keystrokes is a factor in final score
-cor_act = cor(train$activities, exam_train$Score)
-cor_mouse = cor(log10(train$mmove), exam_train$Score)
-cor_key = cor(train$keys, exam_train$Score)
+# see whether the number of activities completed, mouse movements or keystrokes is a factor in final score
+fit <- lm(Score ~ activities + mmove + keys, data = train)
 
-cor_results <- data.frame(Number_of = "Activities", Correlation = cor_act)
-cor_results <- bind_rows(cor_results,
-                         data_frame(Number_of="Mouse Movements", Correlation = cor_mouse ))
-cor_results <- bind_rows(cor_results,
-                         data_frame(Number_of="Keystrokes", Correlation = cor_key ))
+summary(fit)
+library(broom)
+coefs <- tidy(fit, conf.int = TRUE)
+coefs
 
-cor_results %>% knitr::kable()
+#graph the predicted results
 
-plot(exam_train$Score, train$activities)
-plot(exam_train$Score, log10(train$mmove))
-plot(exam_train$Score, train$keys)
- 
-# create a term for activity count effect, ac, as the difference in average count and the student's count 
-# multiplied by its correlation coefficient.
+test %>%
+  mutate(R_hat = predict(fit, newdata = .)) %>%
+  ggplot(aes(R_hat, Score, label = StudentID)) + 
+  geom_point() +
+  geom_text(nudge_x=0.1, cex = 2) + 
+  geom_abline()
 
-act_avg = mean(train$activities)
-ac = cor_act*(train$activities-act_avg)
+#enter the lm values in a model
 
-#add to model and assess results
-avg_act <- mu + ac
+predicted_score <- 23.7 + 0.226*test$activities +  0.00000543*test$mmove + 0.000988*test$keys
 
-model2<- RMSE(exam_test$Score, avg_act)
+# check results using RMSE function
 
-rmse_results <- bind_rows(rmse_results, 
-                          data_frame(Model = "Simple average  + # Activities", 
-                                     RMSE = model2))
+model <- RMSE(test$Score, predicted_score)
+model
 
-# create a term for mouse movement effect, mm, as the difference in average count and the student's count 
-# divided by 10^4 and multiplied by its correlation coefficient.
 
-avg_m = mean(train$mmove/10^4)
-mm = cor_mouse*(train$mmove/10^4-avg_m)
+# **** add results to data frame *******
 
-#add to model and assess results
-avg_act_m <- mu + ac + mm
+rmse_results <- bind_rows(rmse_results,
+                          data_frame(Model="Linear Regression",  
+                                     RMSE = model ))
 
-model3<- RMSE(exam_test$Score, avg_act_m)
 
-rmse_results <- bind_rows(rmse_results, 
-                          data_frame(Model = "Simple average  + # Activities + Mouse Movement", 
-                                     RMSE = model3))
+# see whether the session scores are predictive in final score
+session_grades <- intermediate_grades %>% 
+  mutate(StudentID = StudentId) %>%
+  select(-StudentId)
 
-# create a term for keystroke count effect, kc, as the difference in average count and the student's count 
-# multiplied by its correlation coefficient.
+metrics2 <- left_join(users, session_grades, by = "StudentID")
 
-ks_avg = mean(train$keys/10^3)
-kc = cor_key*(train$keys/10^3-ks_avg)
+test2 <- filter(metrics2, StudentID %in% c(test_index))
 
-#add to model and assess results
-avg_act_m_k <- mu + ac + mm + kc
+train2 <- anti_join(metrics2, test, by = "StudentID")
 
-model4<- RMSE(exam_test$Score, avg_act_m_k)
+summary(train2)
+summary(test2)
 
-rmse_results <- bind_rows(rmse_results, 
-                          data_frame(Model = "Simple average  + # Activities + Mouse Movement + Keystrokes", 
-                                     RMSE = model4))
+fit2 <- lm(Score ~ Session2 + Session3 + Session4 + Session5 + Session6, data = train2)
+
+summary(fit2)
+coefs2 <- tidy(fit2, conf.int = TRUE)
+coefs2
+
+#graph the predicted results
+
+test2 %>%
+  mutate(R_hat = predict(fit2, newdata = .)) %>%
+  ggplot(aes(R_hat, Score, label = StudentID)) + 
+  geom_point() +
+  geom_text(nudge_x=0.1, cex = 2) + 
+  geom_abline()
+
+#enter the lm values in a model
+
+predicted_score2 <- 24.9 + 2.1*test2$Session2 + 1.96*test2$Session3 + 0.0884*test2$Session4 + 0.98*test2$Session5 + 9.36*test2$Session6
+
+# check results using RMSE function
+
+model2 <- RMSE(test2$Score, predicted_score2)
+model2
+
+
+# **** add results to data frame *******
+
+rmse_results <- bind_rows(rmse_results,
+                          data_frame(Model="Session Scores",  
+                                     RMSE = model2 ))
+
+
 rmse_results %>% knitr::kable()
 

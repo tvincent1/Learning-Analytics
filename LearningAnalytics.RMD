@@ -1,0 +1,427 @@
+---
+title: "Learning Analytics Results"
+author: "Tasha Vincent"
+date: "March 6, 2019"
+output: word_document
+---
+
+Introduction
+This project leverages the data gathered from engineering students at the University of Genoa in Italy, and examines whether general engagement metrics such as number of activities completed, mouse movements, and keystrokes can be used to accurately predict outcomes on the final exam.  I extract and transform the data using data wrangling methodologies, explore data visualization in R Studio, and develop a machine learning algorithm evaluated using RMSE.  Although the results are not as dramatic as hoped, the data is fruitful for further exploration and the data is now in excellent shape to explore other metrics that may be more predictive of final results.
+
+
+Methods and Analysis
+I began by downloading the Educational Process Mining Learning Analytics Dataset from here https://archive.ics.uci.edu/ml/datasets/Educational+Process+Mining+(EPM)%3A+A+Learning+Analytics+Data+Set including data gathered from the engineering students at the University of Genoa in Italy. The datasets were originally organized by session, with separate files for intermediate grades and final grades. 
+
+
+Data wrangling
+
+Step one was to consolidate all of the session level information into a single, tidy data set that can be analyzed by student and by session to build a picture of a given student’s experience in the classroom. For each of the six sessions, data was collected in a single file per student ID containing a list of the activities completed, and the mouse movements, keystrokes, and start and end times for each activity. I used the datatable library to extract a list of the files into a consolidated dataframe per session, then used the bindrows function to generate a single data set across all sessions and students.  The  column heads for the session information were provided separately, so I used the colnames function to bind the column names to the data.
+
+```{r Wrangle2, echo=FALSE }
+
+library(data.table)
+library(tidyverse)
+library(dplyr)
+# Create data frame for each session
+
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 1") 
+s1 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 2") 
+s2 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 3") 
+s3 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 4") 
+s4 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 5") 
+s5 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/Processes/Session 6") 
+s6 <- list.files() %>% 
+  map_df(~fread(., stringsAsFactors = FALSE, colClasses = list(integer64= 7)))
+
+#merge all sessions into one data frame
+sessions <- bind_rows(list(s1, s2, s3, s4, s5, s6))
+features <- fread("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/features.txt")
+
+#add headers
+colnames(sessions) <- as.character(features$V2)
+```
+
+Step two was to consolidate the grades data. The intermediate grades file included scores for activities that students completed in sessions 2 through 6. Although the information in this file was readily scannable, it was not in a tidy format, so I used gather to create a new dataframe in a tidy format. 
+
+```{r Wrangle4, echo=FALSE}
+
+library(readxl)
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/")
+intermediate_grades <- read_excel("intermediate_grades.xlsx")
+  summary(intermediate_grades)
+ 
+colnames(intermediate_grades) <- gsub(" ","",colnames(intermediate_grades))
+  quiz <- gather(intermediate_grades, Session, Score, 'Session2':'Session6', factor_key = TRUE)
+ 
+head(quiz)
+```
+
+The final exam grades were provided in two files, with students allowed to sit one or both sessions.  I opted to use the students latest score as their final score in this case, and consolidated the files through join statements into a final dataframe. 
+```{r wrangle final, echo=FALSE}
+
+setwd ("~/R/LearningAnalytics_Genoa/EPMDataset/EPM Dataset 2/Data/")
+final_grades <- read_excel("final_grades.xlsx", sheet = "Exam (First time)")
+final_grades2 <- read_excel("final_grades.xlsx", sheet = "Exam (Second time)")
+
+  #Combine the two final exam sessions, keeping just the last score for students who retoook it
+  retake <- semi_join(final_grades2, final_grades, by= "Student ID")
+  final1 <- anti_join(final_grades, final_grades2, by= "Student ID")
+  final1a <- anti_join(final_grades2, final_grades, by= "Student ID")
+  final <- bind_rows(final1, final1a, retake)
+
+
+```
+
+
+The final exam data included the scores on session-specifc questions. To prepare this data for further analysis, I created an items dataset in tidy format.
+```{r wrangle items, echo=FALSE}
+items <- gather(final, Question, Score, 'ES 1.1 \r\n(2 points)':'TOTAL\r\n(100 points)', factor_key = TRUE)
+  
+```
+
+
+Data Visualizations
+
+I began by creating a dataframe with just the metrics I wanted to explore, grouping the data by student ID. I then created a histogram to explore whether students usually completed the same number of activities.  
+```{r Viz1, echo=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(data.table)
+
+
+
+user_act <- sessions %>% 
+  select(student_Id, session, activity, mouse_movement, keystroke) %>%
+  group_by(student_Id) %>%
+  mutate(activities = n_distinct(activity), mmove = sum(mouse_movement), keys=sum(keystroke))
+
+user_act %>% 
+  arrange(activities) %>%
+  ggplot(aes(activities)) +
+  geom_histogram(binwidth = 5) +
+  ggtitle("Count of Activites per Student") +
+  ylab("# Students")
+  geom_bar(stat = "identity")
+
+```
+
+Next, I created density plots with counts of activities for student, mouse movements per student, and keystrokes per student.
+The number of activities shows a bimodal distribution, with peaks around 20 and 40 activities while the number of mouse movements and keystrokes are shown in gaussian distribution.
+```{r Viz2, echo= FALSE}
+ user_act2 <- sessions %>% 
+  select(student_Id, session, activity, mouse_movement, keystroke) %>%
+  group_by(student_Id) %>%
+  summarize(activities = n_distinct(activity), mmove = sum(mouse_movement), keys=sum(keystroke))
+
+p1 <- user_act2 %>% 
+    ggplot(aes(activities)) +
+    geom_density(kernel = "gaussian", fill = "blue") +
+    ggtitle("Count of Activites per Student")
+
+p2 <-  user_act2 %>% 
+      ggplot(aes(mmove)) +
+      geom_density(kernel = "gaussian", fill = "blue") +
+      scale_x_log10() +
+      ggtitle("Mouse Movements per Student")  +
+      xlab("Mouse Movement")
+
+  p3 <-  user_act2 %>% 
+      ggplot(aes(keys)) +
+      geom_density(kernel = "gaussian", fill = "blue") +
+      scale_x_log10() +
+      ggtitle("Keystrokes per Student") +
+      xlab("Keystrokes")
+
+    library(gridExtra)
+    grid.arrange(p1, p2, p3, ncol=3)
+
+```
+
+Next I began to explore the session-level information. 
+
+```{r acttype, echo=FALSE}
+#Explore variability by student by session
+    user_act_ses <- user_act %>%
+      group_by(student_Id, session) %>%
+      mutate(activities = n_distinct(activity), mmove = sum(mouse_movement), keys=sum(keystroke))
+    
+    user_act_ses <- user_act_ses %>%
+      filter(activity != "Other")
+    
+    user_act_ses <- user_act_ses %>%
+      filter(activity != "Blank")
+    
+    user_actt_ses <- user_act_ses %>% 
+      select(activity, student_Id) %>%
+      group_by(student_Id, activity) %>%
+      summarize(act_type = n())
+
+```
+
+
+Next I grouped by session as well as by student. 
+```{r Sessions, echo=FALSE}
+  user_act_ses %>%
+    ggplot(aes(student_Id,n_distinct(session), fill=as.character(session), position="stack")) +
+    geom_col() +
+    labs(y="") +
+    guides(color=guide_legend(title="Session")) +
+    scale_fill_manual(values= c("lightblue","skyblue", "royalblue", "blue", "navy", "black")) +
+    theme(axis.text.y=element_blank(), legend.title = element_blank()) +
+    ggtitle("Sessions Completed per Student")
+
+```
+We can see that different students completed different sessions.
+
+Examining the histograms at this level shows a greater variety in student engagement. I also explored using box plots to summarize student mouse movements and keystrokes per session.
+
+I examined the activities that users completed, by activity. The visualization generated was difficult to interpret however, so I further manipulated the data to consolidate activity types. 
+```{r activities, echo=FALSE}
+ #collapse types
+    library(stringr)
+
+user_actt <- user_act_ses %>%
+  select(activity, student_Id) %>%
+  mutate(act_type = activity) 
+  user_actt$act_type[grepl('Deeds', user_actt$act_type)] <- 'Deeds'
+  user_actt$act_type[grepl('Study', user_actt$act_type)] <- 'Study'
+  user_actt$act_type[grepl('Text', user_actt$act_type)] <- 'Text'
+  user_actt$act_type[grepl('FSM', user_actt$act_type)] <- 'FSM'
+  user_actt$act_type[grepl('Fsm', user_actt$act_type)] <- 'FSM'
+
+  user_actt  %>%
+    group_by(student_Id, act_type) %>%
+    ggplot(aes(student_Id,act_type, fill = act_type, position="stack")) +
+    geom_col() +
+    labs(y="") +
+    theme(axis.text.y=element_blank(), legend.title = element_blank()) +
+    ggtitle("Activities Completed by Type per Student")
+```
+I then further explored this information by session.
+
+
+```{r ActType by Session, echo=FALSE}
+#look at activities by type per session
+  user_actt_ses <- sessions %>%
+    select(student_Id, activity, session ) %>%
+    filter(activity != "Other") %>%
+    filter(activity != "Blank") %>%
+    mutate(act_type = activity) 
+  user_actt_ses$act_type[grepl('Deeds', user_actt_ses$act_type)] <- 'Deeds'
+  user_actt_ses$act_type[grepl('Study', user_actt_ses$act_type)] <- 'Study'
+  user_actt_ses$act_type[grepl('Text', user_actt_ses$act_type)] <- 'Text'
+  user_actt_ses$act_type[grepl('FSM', user_actt_ses$act_type)] <- 'FSM'
+  user_actt_ses$act_type[grepl('Fsm', user_actt_ses$act_type)] <- 'FSM'
+
+user_actt_ses  %>%
+    group_by(student_Id, session, act_type) %>%
+    ggplot(aes(student_Id, act_type, fill = act_type, position="stack")) +
+    geom_col() +
+    facet_grid(session~.) +
+    labs(y="") +
+    theme(axis.text.y=element_blank(), legend.title = element_blank()) +
+    ggtitle("Session Activities Completed by Type per Student")
+
+
+```
+
+
+Finally, I turned my attention to the scores. First I looked at the final exam scores, and noted a wide variability in outcomes.
+```{r final histogram, echo=FALSE}
+overall <- items %>%
+  filter(Question =='TOTAL\r\n(100 points)')
+
+overall <- overall %>%
+  mutate(StudentID = as.numeric(overall$'Student ID')) 
+
+p4 <- overall %>%
+  ggplot(aes(Score)) +
+  geom_histogram(binwidth = 5)  +  
+  ggtitle("Final Exam Score Distribution")  
+    
+p5 <- overall %>%
+    ggplot(aes(StudentID, Score, fill=Score)) + 
+    geom_col() +
+    ggtitle("Final Exam Scores by Student") 
+
+grid.arrange(p4, p5, ncol=2)
+```
+
+
+Next I took a look at the session level activity scores, and observed wide variations in participation by students, as well as point values earned per student, per activity, and for the same student across activities.
+```{r Session scores, echo=FALSE}
+quiz %>%
+    group_by(StudentId, Session) %>%
+    ggplot(aes(StudentId, Score, fill = Score, position_stack())) +
+    geom_col() +
+    facet_grid(Session~.) +
+    ggtitle("Session Assessment Scores by Student")
+
+```
+
+
+Creating a predictive model
+ I began by combining all of the score values into a single data set. I used the caret package to  partition the data set, using 30% of the data to test my model. I chose 30% because the relatively small number of students in the data set, 115, and felt that 10% would be too low, and 50% too high. To create test and training sets, I first needed to isolate consistent data. Not all students completed all six sessions, and not all the students who completed work in a session also took the final exam. There were only 93 students who took the final exam, so I used this as the basis for creating and index of 30% of the students. I then created a test set of exam scores for these students, and activity summary data for the students. I created training sets for the activities completed and exam scores, ensuring that the same student IDs existed in both, then joined the tables.
+
+```{r partitioned data, echo=FALSE}
+# create test and training subsets
+# Validation (or test_set) set will be 30% of final exam data (overall) data
+library(caret)
+set.seed(1)
+test_index <- createDataPartition(y = overall$StudentID, times = 1, p = 0.3, list = FALSE)
+
+users <- overall %>% 
+  select(- Question, -"Student ID")
+
+user_act2 <- sessions %>% 
+  select(student_Id, session, activity, mouse_movement, keystroke) %>%
+  group_by(student_Id) %>%
+  summarize(activities = n_distinct(activity), mmove = sum(mouse_movement), keys=sum(keystroke))
+
+user_act2 <- user_act2 %>% 
+  mutate(StudentID = student_Id) %>%
+  select(StudentID, activities, mmove, keys)
+
+metrics <- left_join(users, user_act2, by = "StudentID")
+
+test <- filter(metrics, StudentID %in% c(test_index))
+
+train <- anti_join(metrics, test, by = "StudentID")
+
+
+```
+
+I opted to use the residual mean squares estimate as the definition of success for this model. I started by creating a model that simply predicted that the students would receive the average score on the final exam. I then evaluated this model using the RMSE function.
+
+```{r}
+mu <- mean(train$Score)
+
+avg_only <- RMSE(test$Score, mu)
+avg_only
+```
+
+
+Next I used lm to see whether the number of activities, number of mouse movements, and number of keystrokes were correlated to the final exam scores for a given student. I created a simple plot of the results vs. the regression line, which implied that the correlation was weak.
+
+
+```{r linear model, echo=FALSE}
+
+# see whether the number of activities completed, mouse movements or keystrokes is a factor in final score
+fit <- lm(Score ~ activities + mmove + keys, data = train)
+
+summary(fit)
+library(broom)
+coefs <- tidy(fit, conf.int = TRUE)
+coefs
+
+test %>%
+mutate(R_hat = predict(fit, newdata = .)) %>%
+  ggplot(aes(R_hat, Score)) + 
+  geom_point() +
+  #geom_text(nudge_x=0.1, cex = 2) + 
+  geom_abline()
+```
+
+
+
+Nonetheless, I wanted to see if these measures could be used to improve the average only model, so I used the coefficients to create a model of effects of activity, mouse movements, and the number of keystrokes. 
+
+```{r model}
+coefs <- tidy(fit, conf.int = TRUE)
+coefs
+
+predicted_score <- 23.7 + 0.226*test$activities +  0.00000543*test$mmove + 0.000988*test$keys
+
+```
+
+ 
+Results
+The results of the linear model based on engagement metrics are not very compelling. The average only approach has a rmse of over 26, which means it can only predict a student score within 26 points on a 100-point exam. Additional terms comparing number of activities, mouse movements, and keystrokes and their effect on the final score barely improved the model at all, with a combined effective less than 1 percentage points.
+
+```{r results, echo=FALSE}
+# check results using RMSE function
+
+model <- RMSE(test$Score, predicted_score)
+
+# **** Store results in a data frame *******
+
+rmse_results <- data_frame(Model = "Simple average", RMSE = avg_only)
+
+rmse_results <- bind_rows(rmse_results,
+                          data_frame(Model="Linear model of engagement metrics",  
+                                     RMSE = model ))
+rmse_results %>% knitr::kable()
+
+```
+
+
+Next, I created a model based on the scores on session activities. 
+```{r model2, echo=FALSE}
+# see whether the session scores are predictive in final score
+session_grades <- intermediate_grades %>% 
+  mutate(StudentID = StudentId) %>%
+  select(-StudentId)
+
+metrics2 <- left_join(users, session_grades, by = "StudentID")
+
+test2 <- filter(metrics2, StudentID %in% c(test_index))
+
+train2 <- anti_join(metrics2, test, by = "StudentID")
+
+
+fit2 <- lm(Score ~ Session2 + Session3 + Session4 + Session5 + Session6, data = train2)
+
+coefs2 <- tidy(fit2, conf.int = TRUE)
+coefs2
+```
+
+I then plotted the results with a regression line.
+```{r model2 graph, echo=FALSE}
+#graph the predicted results
+
+test2 %>%
+  mutate(R_hat = predict(fit2, newdata = .)) %>%
+  ggplot(aes(R_hat, Score, label = StudentID)) + 
+  geom_point() +
+  geom_text(nudge_x=0.1, cex = 2) + 
+  geom_abline()
+
+```
+
+These results weren't much better, improving RMSE by just over 2 percentage points. 
+``` {r models summary, echo=FALSE}
+#enter the lm values in a model
+
+predicted_score2 <- 24.9 + 2.1*test2$Session2 + 1.96*test2$Session3 + 0.0884*test2$Session4 + 0.98*test2$Session5 + 9.36*test2$Session6
+
+# check results using RMSE function
+model2 <- RMSE(test2$Score, predicted_score2)
+
+# **** add results to data frame *******
+
+rmse_results <- bind_rows(rmse_results,
+                          data_frame(Model="Linear Model of Session Scores",  
+                                     RMSE = model2 ))
+
+rmse_results %>% knitr::kable()
+```
+Conclusion and next steps
+While the outcome was not as dramatic as I had hoped, the methodology does seem promising, perhaps if applied to session-level variability. For next steps, I would explore whether completing certain activity types have a stronger effect on the final exam score, and perhaps even activity types by session.  Finally, I would look to see whether the session level scores correlate to the questions on the final exam that come from each session. In summary, I think the data is ripe for generating a predictive model, provided I can find the right metrics to include in the model.
+
+
+
+The data on which this project is based was originally published in the following publication.
+
+[1] M. Vahdat, L. Oneto, D. Anguita, M. Funk, M. Rauterberg.: A learning analytics approach to correlate the academic achievements of students with interaction data from an educational simulator. In: G. Conole et al. (eds.): EC-TEL 2015, LNCS 9307, pp. 352-366. Springer (2015).
+DOI: 10.1007/978-3-319-24258-3 26
